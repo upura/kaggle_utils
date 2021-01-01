@@ -2,12 +2,10 @@ from operator import itemgetter
 
 import numpy as np
 import pandas as pd
-import tensorflow as tf
 from sklearn.pipeline import make_pipeline, make_union
 from sklearn.preprocessing import (FunctionTransformer, OneHotEncoder,
                                    QuantileTransformer)
 from tensorflow.keras import Input, Model
-from tensorflow.keras import backend as K
 from tensorflow.keras import optimizers
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.utils import Sequence
