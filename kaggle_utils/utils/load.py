@@ -1,8 +1,8 @@
 import glob
 import pickle
+
 import numpy as np
 import pandas as pd
-
 
 
 def check_columns(df, columns):
@@ -10,14 +10,14 @@ def check_columns(df, columns):
     duplicated = list(set(df.columns) & set(columns))
     columns.extend(non_duplicated)
     return df[non_duplicated], columns, duplicated
-    
-    
+
+
 def load_features(file_names, data_dir='../data/working/features/', print_path=False, print_duplicated=False):
     features = []
     columns = []
     for file_name in file_names:
         duplicated = []
-        load_paths = glob.glob(data_dir+file_name+'.*')
+        load_paths = glob.glob(data_dir + file_name + '.*')
         if (len(load_paths) > 1) or (len(load_paths) == 0):
             raise ValueError('Invalid file name. Found path: ', load_paths)
         if print_path:
@@ -54,15 +54,15 @@ def load_list_features(file_names, data_dir='../data/working/features/', load_ty
         features = {}
     else:
         raise ValueError('invalid load_type')
-        
+
     for file_name in file_names:
-        load_paths = glob.glob(data_dir+file_name+'.*')
+        load_paths = glob.glob(data_dir + file_name + '.*')
         if (len(load_paths) > 1) or (len(load_paths) == 0):
             raise ValueError('Invalid file name. Found path: ', load_paths)
         print('Loading {}...'.format(load_paths[0]))
         extension = load_paths[0].split('.')[-1]
         if extension == 'pkl':
-            with open(load_paths[0] , mode='rb') as f:
+            with open(load_paths[0], mode='rb') as f:
                 tmp = pickle.load(f)
             if load_type == 'list':
                 features.extend(tmp)

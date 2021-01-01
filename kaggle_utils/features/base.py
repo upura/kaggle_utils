@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+
 from sklearn.base import BaseEstimator, TransformerMixin
 
 
@@ -10,14 +11,14 @@ class BaseFeatureTransformer(ABC, BaseEstimator, TransformerMixin):
         return self.transform(dataframe)
 
     def fit(self, X):
-        return self 
+        return self
 
     @abstractmethod
     def transform(self, dataframe):
         raise NotImplementedError
 
     def get_categorical_features(self):
-        return [] 
+        return []
 
     def get_numerical_features(self):
         return []

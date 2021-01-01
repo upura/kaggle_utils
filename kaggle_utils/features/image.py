@@ -1,10 +1,11 @@
-from collections import defaultdict
-from functools import partial
 import multiprocessing
 import operator
 import os
+from collections import defaultdict
+from functools import partial
 
 import cv2
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from PIL import Image, ImageStat
@@ -19,6 +20,7 @@ class Saliency():
         This class implements an algorithm that is based on the spectral
         residual approach (Hou & Zhang, 2007).
     """
+
     def __init__(self, img, use_numpy_fft=True, gauss_kernel=(5, 5)):
         """Constructor
             This method initializes the saliency algorithm.
@@ -47,7 +49,6 @@ class Saliency():
         """
         if self.need_saliency_map:
             # haven't calculated saliency map for this image yet
-            num_channels = 1
             if len(self.frame_orig.shape) == 2:
                 # single channel
                 sal = self._get_channel_sal_magn(self.frame_small)
@@ -66,7 +67,7 @@ class Saliency():
                 sal = cv2.GaussianBlur(sal, self.gauss_kernel, sigmaX=8,
                                        sigmaY=0)
             sal = sal**2
-            sal = np.float32(sal)/np.max(sal)
+            sal = np.float32(sal) / np.max(sal)
 
             # scale up
             sal = cv2.resize(sal, self.frame_orig.shape[1::-1])
@@ -108,7 +109,7 @@ class Saliency():
         # back to cartesian frequency domain
         if self.use_numpy_fft:
             real_part, imag_part = cv2.polarToCart(residual, angle)
-            img_combined = np.fft.ifft2(real_part + 1j*imag_part)
+            img_combined = np.fft.ifft2(real_part + 1j * imag_part)
             magnitude, _ = cv2.cartToPolar(np.real(img_combined),
                                            np.imag(img_combined))
         else:
@@ -136,7 +137,7 @@ class Saliency():
         rows, cols = self.frame_orig.shape[:2]
         nrows = cv2.getOptimalDFTSize(rows)
         ncols = cv2.getOptimalDFTSize(cols)
-        frame = cv2.copyMakeBorder(frame, 0, ncols-cols, 0, nrows-rows,
+        frame = cv2.copyMakeBorder(frame, 0, ncols - cols, 0, nrows - rows,
                                    cv2.BORDER_CONSTANT, value=0)
 
         # do FFT and get log-spectrum
@@ -144,7 +145,7 @@ class Saliency():
         spectrum = np.log10(np.abs(np.fft.fftshift(img_dft)))
 
         # return for plotting
-        return 255*spectrum/np.max(spectrum)
+        return 255 * spectrum / np.max(spectrum)
 
     def plot_power_spectrum(self):
         """Plots the power spectrum
@@ -171,19 +172,19 @@ class Saliency():
             spectrum = np.log10(np.real(np.abs(img_dft))**2)
         else:
             img_dft = cv2.dft(np.float32(frame), flags=cv2.DFT_COMPLEX_OUTPUT)
-            spectrum = np.log10(img_dft[:, :, 0]**2+img_dft[:, :, 1]**2)
+            spectrum = np.log10(img_dft[:, :, 0]**2 + img_dft[:, :, 1]**2)
 
         # radial average
         L = max(frame.shape)
-        freqs = np.fft.fftfreq(L)[:L/2]
-        dists = np.sqrt(np.fft.fftfreq(frame.shape[0])[:, np.newaxis]**2 +
-                        np.fft.fftfreq(frame.shape[1])**2)
+        freqs = np.fft.fftfreq(L)[:L / 2]
+        dists = np.sqrt(np.fft.fftfreq(frame.shape[0])[:, np.newaxis]**2
+                        + np.fft.fftfreq(frame.shape[1])**2)
         dcount = np.histogram(dists.ravel(), bins=freqs)[0]
         histo, bins = np.histogram(dists.ravel(), bins=freqs,
                                    weights=spectrum.ravel())
 
         centers = (bins[:-1] + bins[1:]) / 2
-        plt.plot(centers, histo/dcount)
+        plt.plot(centers, histo / dcount)
         plt.xlabel('frequency')
         plt.ylabel('log-spectrum')
         plt.show()
@@ -200,41 +201,41 @@ class Saliency():
         saliency = self.get_saliency_map()
 
         if use_otsu:
-            _, img_objects = cv2.threshold(np.uint8(saliency*255), 0, 255,
+            _, img_objects = cv2.threshold(np.uint8(saliency * 255), 0, 255,
                                            cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         else:
-            thresh = np.mean(saliency)*255*3
-            _, img_objects = cv2.threshold(np.uint8(saliency*255), thresh, 255,
+            thresh = np.mean(saliency) * 255 * 3
+            _, img_objects = cv2.threshold(np.uint8(saliency * 255), thresh, 255,
                                            cv2.THRESH_BINARY)
         return img_objects
 
 
 def get_dullness(img):
     img = Image.fromarray(img)
-    # obtain the color palette of the image 
+    # obtain the color palette of the image
     palette = defaultdict(int)
     for pixel in img.getdata():
         palette[pixel] += 1
-    
-    # sort the colors present in the image 
+
+    # sort the colors present in the image
     sorted_x = sorted(palette.items(), key=operator.itemgetter(1), reverse=True)
     light_shade, dark_shade, shade_count, pixel_limit = 0, 0, 0, 25
     for i, x in enumerate(sorted_x[:pixel_limit]):
-        if all(xx <= 20 for xx in x[0][:3]): ## dull : too much darkness 
+        if all(xx <= 20 for xx in x[0][:3]):  # dull : too much darkness
             dark_shade += x[1]
-        if all(xx >= 240 for xx in x[0][:3]): ## bright : too much whiteness 
+        if all(xx >= 240 for xx in x[0][:3]):  # bright : too much whiteness
             light_shade += x[1]
         shade_count += x[1]
-        
+
     light_percent = light_shade / shade_count
     dark_percent = dark_shade / shade_count
     return {'light_percent': light_percent, 'dark_percent': dark_percent}
 
 
-def get_average_pixel_width(img):  
+def get_average_pixel_width(img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     edges_sigma1 = feature.canny(gray, sigma=3)
-    apw = np.sum(edges_sigma1)/ img.shape[0] / img.shape[1]
+    apw = np.sum(edges_sigma1) / img.shape[0] / img.shape[1]
     return {'average_pixel_width': apw}
 
 
@@ -252,10 +253,10 @@ def get_dominant_color(img):
 
     dominant_color = palette[np.argmax(np.unique(labels))]
     dominant_color = (dominant_color / 255).squeeze()
-    
+
     return {
-        'dominant_color_r': dominant_color[0], 
-        'dominant_color_g': dominant_color[1], 
+        'dominant_color_r': dominant_color[0],
+        'dominant_color_g': dominant_color[1],
         'dominant_color_b': dominant_color[2]
     }
 
@@ -272,15 +273,14 @@ def get_shape(img):
 
 def get_brightness_and_saturation_and_contrast(img):
     def get_stats(img):
-        x, y = img.shape[0], img.shape[1]
         img = img.reshape(-1, 3)
         return np.concatenate([
-            img.mean(axis=0), 
-            img.std(axis=0), 
-            img.min(axis=0), 
+            img.mean(axis=0),
+            img.std(axis=0),
+            img.min(axis=0),
             img.max(axis=0)
         ])
-    yuv = get_stats(cv2.cvtColor(img, cv2.COLOR_BGR2YUV)) 
+    yuv = get_stats(cv2.cvtColor(img, cv2.COLOR_BGR2YUV))
     hls = get_stats(cv2.cvtColor(img, cv2.COLOR_BGR2HLS))
     result = {}
     result.update({'yuv_stats_' + str(i): stats for i, stats in enumerate(yuv)})
@@ -310,46 +310,46 @@ def get_interest_points(img):
 
 def get_saliency_features(img):
     saliency = Saliency(img).get_saliency_map()
-    binary_saliency = np.where(saliency>3*saliency.mean(), 1, 0).astype('uint8')
+    binary_saliency = np.where(saliency > 3 * saliency.mean(), 1, 0).astype('uint8')
     prop_background = 1 - binary_saliency.mean()
-    
+
     n_components, output, stats, centroids = cv2.connectedComponentsWithStats(binary_saliency)
     sizes = stats[:, -1]
     countours = stats[:, :-1]
-    max_component_size = max(sizes)/img.shape[0]/img.shape[1]
+    max_component_size = max(sizes) / img.shape[0] / img.shape[1]
     bbox = countours[np.argmax(sizes)]
     max_component_avg_saliency = saliency[bbox[1]:bbox[3], bbox[0]:bbox[2]].mean()
-    s = centroids/[img.shape[0], img.shape[1]]
+    s = centroids / [img.shape[0], img.shape[1]]
     dist = euclidean_distances(s)
     mean_dist = dist[~np.eye(dist.shape[0], dtype=bool)].mean()
     max_component_centorid = s[np.argmax(sizes)]
     min_dist_from_third_points = min(
-        np.linalg.norm(max_component_centorid - [1/3, 1/3]),
-        np.linalg.norm(max_component_centorid - [1/3, 2/3]),
-        np.linalg.norm(max_component_centorid - [2/3, 1/3]),
-        np.linalg.norm(max_component_centorid - [2/3, 2/3]),
+        np.linalg.norm(max_component_centorid - [1 / 3, 1 / 3]),
+        np.linalg.norm(max_component_centorid - [1 / 3, 2 / 3]),
+        np.linalg.norm(max_component_centorid - [2 / 3, 1 / 3]),
+        np.linalg.norm(max_component_centorid - [2 / 3, 2 / 3]),
     )
     dist_from_center = np.linalg.norm(s - [0.5, 0.5], axis=1)
     mean_dist_from_center = dist_from_center.mean()
     sum_dist_from_center = dist_from_center.sum()
-    
+
     result = {
-        'prop_background': prop_background, 
-        'n_components': n_components, 
-        'max_component_size': max_component_size, 
-        'max_component_avg_saliency': max_component_avg_saliency, 
-        'mean_dist': mean_dist, 
-        'min_dist_from_third_points': min_dist_from_third_points, 
-        'mean_dist_from_center': mean_dist_from_center, 
+        'prop_background': prop_background,
+        'n_components': n_components,
+        'max_component_size': max_component_size,
+        'max_component_avg_saliency': max_component_avg_saliency,
+        'mean_dist': mean_dist,
+        'min_dist_from_third_points': min_dist_from_third_points,
+        'mean_dist_from_center': mean_dist_from_center,
         'sum_dist_from_center': sum_dist_from_center
     }
-    
+
     return result
 
 
 def get_face_features(img, cascade_path):
     cascade = cv2.CascadeClassifier(cascade_path)
-    
+
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     facerect = cascade.detectMultiScale(gray, scaleFactor=1.08, minNeighbors=1, minSize=(20, 20))
     face_area = 0
@@ -388,10 +388,10 @@ class ImageFeaturesTransformer(BaseFeatureTransformer):
         img = cv2.imread(path)
         result = {k: v for f in self.functions for k, v in f(img).items()}
         return pd.Series(result)
-    
+
     def _transform(self, paths):
         return pd.Series(paths).apply(self._get_features)
-    
+
     def _parallel_transform(self):
         with multiprocessing.Pool(processes=self.workers) as p:
             splits = np.array_split(self.path_list, self.workers)
@@ -399,8 +399,8 @@ class ImageFeaturesTransformer(BaseFeatureTransformer):
         features = pd.concat(features).reset_index(drop=True)
         features.columns = [self.name + c for c in features.columns]
         return features
-        
+
     def transform(self, dataframe):
         self.features = [self._parallel_transform()]
-        dataframe = pd.concat([dataframe]+self.features, axis=1)
+        dataframe = pd.concat([dataframe] + self.features, axis=1)
         return dataframe

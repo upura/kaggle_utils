@@ -13,11 +13,12 @@ class RepeatedStratifiedGroupKFold():
         self.n_splits = n_splits
         self.n_repeats = n_repeats
         self.random_state = random_state
-        
+
     # Implementation based on this kaggle kernel:
     # https://www.kaggle.com/jakubwasikowski/stratified-group-k-fold-cross-validation
     def split(self, X, y=None, groups=None):
         k = self.n_splits
+
         def eval_y_counts_per_fold(y_counts, fold):
             y_counts_per_fold[fold] += y_counts
             std_per_label = []
@@ -28,7 +29,7 @@ class RepeatedStratifiedGroupKFold():
                 std_per_label.append(label_std)
             y_counts_per_fold[fold] -= y_counts
             return np.mean(std_per_label)
-            
+
         rnd = check_random_state(self.random_state)
         for repeat in range(self.n_repeats):
             labels_num = np.max(y) + 1
@@ -40,7 +41,7 @@ class RepeatedStratifiedGroupKFold():
 
             y_counts_per_fold = defaultdict(lambda: np.zeros(labels_num))
             groups_per_fold = defaultdict(set)
-        
+
             groups_and_y_counts = list(y_counts_per_group.items())
             rnd.shuffle(groups_and_y_counts)
 

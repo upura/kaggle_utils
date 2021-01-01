@@ -1,5 +1,5 @@
-import pandas as pd
 import networkx as nx
+import pandas as pd
 from node2vec import Node2Vec
 
 from .base import BaseFeatureTransformer
@@ -10,20 +10,21 @@ class GraphVectorizer(BaseFeatureTransformer):
     Reference
     ---------
     https://github.com/senkin13/kaggle/blob/master/elo/graph.py
-    
+
     Example
     -------
     vectorizer = GraphVectorizer(
-        ['card_id','merchant_id'], 
-        n_components=64, walk_length=30, num_walks=100, workers=4, 
+        ['card_id','merchant_id'],
+        n_components=64, walk_length=30, num_walks=100, workers=4,
         window=5, min_count=1, batch_words=4, name='node2vec'
     )
     new_transactions = vectorizer.fit_transform(new_transactions)
     '''
+
     def __init__(
-        self, categorical_columns, 
-        n_components=64, walk_length=30, num_walks=100, workers=4, 
-        window=5, min_count=1, batch_words=4, 
+        self, categorical_columns,
+        n_components=64, walk_length=30, num_walks=100, workers=4,
+        window=5, min_count=1, batch_words=4,
         name='node2vec'
     ):
         self.categorical_columns = categorical_columns
@@ -36,25 +37,25 @@ class GraphVectorizer(BaseFeatureTransformer):
         self.min_count = min_count
         self.batch_words = batch_words
         self.name = name
-        
+
     def fit(self, dataframe):
         edges = dataframe.groupby(
-            self.categorical_columns, 
+            self.categorical_columns,
         ).size().reset_index().dropna()
-        
+
         G = nx.DiGraph()
         G.add_weighted_edges_from(edges.values)
 
         node2vec = Node2Vec(
-            G, 
-            dimensions=self.n_components, 
-            walk_length=self.walk_length, 
-            num_walks=self.num_walks, 
+            G,
+            dimensions=self.n_components,
+            walk_length=self.walk_length,
+            num_walks=self.num_walks,
             workers=self.workers,
         )
         self.model = node2vec.fit(
-            window=self.window, 
-            min_count=self.min_count, 
+            window=self.window,
+            min_count=self.min_count,
             batch_words=self.batch_words,
         )
         self.feature = pd.DataFrame({
@@ -65,11 +66,11 @@ class GraphVectorizer(BaseFeatureTransformer):
         ]
         self.features = [self.feature]
         return self
-    
+
     def transform(self, dataframe):
         dataframe = dataframe.merge(self.feature, on=self.categorical_columns[:1], how='left')
         return dataframe
-    
+
     def fit_transform(self, dataframe):
         self.fit(dataframe)
         return self.transform(dataframe)

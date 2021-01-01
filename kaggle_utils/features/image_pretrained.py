@@ -3,18 +3,17 @@ from functools import partial
 import cv2
 import numpy as np
 import pandas as pd
-from PIL import Image
 import tensorflow as tf
 import tensorflow_hub as hub
 import torch
-from torch.utils.data import Dataset
 import torchvision
-from torchvision import transforms
 import torchvision.datasets as datasets
+from PIL import Image
+from torch.utils.data import Dataset
+from torchvision import transforms
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
 from .base import BaseFeatureTransformer
-
 
 imagenet_transforms = transforms.Compose([
     transforms.Resize(256),
@@ -28,13 +27,13 @@ def resize_to_square(img):
     old_size = img.shape[:2]
     img_size = max(old_size)
     ratio = float(img_size) / max(old_size)
-    new_size = tuple([int(x*ratio) for x in old_size])
+    new_size = tuple([int(x * ratio) for x in old_size])
     # new_size should be in (width, height) format
     img = cv2.resize(img, (new_size[1], new_size[0]))
     delta_w = img_size - new_size[1]
     delta_h = img_size - new_size[0]
-    top, bottom = delta_h//2, delta_h-(delta_h//2)
-    left, right = delta_w//2, delta_w-(delta_w//2)
+    top, bottom = delta_h // 2, delta_h - (delta_h // 2)
+    left, right = delta_w // 2, delta_w - (delta_w // 2)
     color = [0, 0, 0]
     img = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)
     return img
@@ -89,24 +88,24 @@ class ImageDatasetFromPath(Dataset):
         self.return_numpy = return_numpy
         self.preprocessors = preprocessors
         self.transforms = transforms
-    
+
     def __len__(self):
         return len(self.paths)
 
     def __getitem__(self, index):
         path = self.paths[index]
         image = cv2.imread(path)
-        
+
         if len(self.preprocessors):
             for preprocessor in self.preprocessors:
                 image = preprocessor(image)
         image = cv2.resize(image, (self.image_size, self.image_size))
         if image.max() > 1:
             image = image / 255
-            
+
         if self.return_numpy:
             return (image[np.newaxis, :, :, :], self.labels[index])
-            
+
         # to tensor
         if self.transforms is not None:
             image = self.transforms(Image.fromarray(image))
@@ -114,13 +113,13 @@ class ImageDatasetFromPath(Dataset):
                 # for TTA
                 if len(image.shape) == 4:
                     return (
-                        torch.cat([transforms.ToTensor()(im.squeeze()/255).unsqueeze(0) for im in image]), 
+                        torch.cat([transforms.ToTensor()(im.squeeze() / 255).unsqueeze(0) for im in image]),
                         torch.tensor(self.labels[index])
                     )
         else:
             image = transforms.ToTensor()(image).type(torch.FloatTensor)
-        return (image, torch.tensor(self.labels[index]))        
-        
+        return (image, torch.tensor(self.labels[index]))
+
 
 class FasterRCNNFeaturesTransformer(BaseFeatureTransformer):
     def __init__(
@@ -136,24 +135,24 @@ class FasterRCNNFeaturesTransformer(BaseFeatureTransformer):
         self.workers = workers
         self.image_size = image_size
         self.name = name
-        
+
         self.model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
         self.model = self.model.eval().to(device)
 
     def transform(self, dataframe):
         dataloader = torch.utils.data.DataLoader(
             ImageDatasetFromPath(
-                self.path_list, 
-                preprocessors=[resize_to_square]+self.preprocessors, 
+                self.path_list,
+                preprocessors=[resize_to_square] + self.preprocessors,
                 transforms=self.transforms,
                 image_size=self.image_size
             ),
-            batch_size=self.batch_size, 
+            batch_size=self.batch_size,
             shuffle=False,
-            num_workers=self.workers, 
+            num_workers=self.workers,
             pin_memory=True
         )
-        
+
         features = []
         with torch.no_grad():
             for i, (input, _) in enumerate(dataloader):
@@ -176,10 +175,10 @@ class FasterRCNNFeaturesTransformer(BaseFeatureTransformer):
                 features.append(result)
         features = np.concatenate(features)
         features = pd.DataFrame(
-            features, 
+            features,
             columns=[
-                'n_objects', 'n_high_score_objects', 
-                'x1', 'y1', 'x2', 'y2', 
+                'n_objects', 'n_high_score_objects',
+                'x1', 'y1', 'x2', 'y2',
                 'best_label', 'best_area', 'best_aspect'
             ]
         )
@@ -190,11 +189,12 @@ class FasterRCNNFeaturesTransformer(BaseFeatureTransformer):
 
 class PytorchPretrainedImageFeaturesTransformer(BaseFeatureTransformer):
     '''
-    Pretrained weights can be found here: 
+    Pretrained weights can be found here:
     https://pytorch.org/hub/research-models
     '''
+
     def __init__(
-        self, path_list, device='cuda', preprocessors=[], transforms=imagenet_transforms, 
+        self, path_list, device='cuda', preprocessors=[], transforms=imagenet_transforms,
         version='pytorch/vision:v0.4.2', model_name='resnext50_32x4d',
         batch_size=16, workers=4, image_size=224,
     ):
@@ -206,7 +206,7 @@ class PytorchPretrainedImageFeaturesTransformer(BaseFeatureTransformer):
         self.workers = workers
         self.image_size = image_size
         self.model_name = model_name
-        
+
         self.model = torch.hub.load(version, model_name, pretrained=True)
         self.model.fc = torch.nn.Identity()
         self.model = self.model.eval().to(device)
@@ -214,17 +214,17 @@ class PytorchPretrainedImageFeaturesTransformer(BaseFeatureTransformer):
     def transform(self, dataframe):
         dataloader = torch.utils.data.DataLoader(
             ImageDatasetFromPath(
-                self.path_list, 
-                preprocessors=[resize_to_square]+self.preprocessors, 
+                self.path_list,
+                preprocessors=[resize_to_square] + self.preprocessors,
                 transforms=self.transforms,
                 image_size=self.image_size
             ),
-            batch_size=self.batch_size, 
+            batch_size=self.batch_size,
             shuffle=False,
-            num_workers=self.workers, 
+            num_workers=self.workers,
             pin_memory=True
         )
-        
+
         features = []
         with torch.no_grad():
             for i, (input, _) in enumerate(dataloader):
@@ -233,7 +233,7 @@ class PytorchPretrainedImageFeaturesTransformer(BaseFeatureTransformer):
                 features.append(preds)
         features = np.concatenate(features)
         features = pd.DataFrame(
-            features, 
+            features,
             columns=[f'{self.model_name}_{i:03}' for i in range(features.shape[1])]
         )
         self.features = [features]
@@ -242,12 +242,13 @@ class PytorchPretrainedImageFeaturesTransformer(BaseFeatureTransformer):
 
 class TFPretrainedImageFeaturesTransformer(BaseFeatureTransformer):
     '''
-    Pretrained weights can be found here: 
+    Pretrained weights can be found here:
     https://tfhub.dev/s?module-type=image-feature-vector&q=tf2
     '''
+
     def __init__(
-        self, path_list, 
-        classifier_url='https://tfhub.dev/tensorflow/resnet_50/feature_vector/1', 
+        self, path_list,
+        classifier_url='https://tfhub.dev/tensorflow/resnet_50/feature_vector/1',
         preprocessors=[], batch_size=256, workers=4, image_size=224,
     ):
         self.path_list = path_list
@@ -256,7 +257,7 @@ class TFPretrainedImageFeaturesTransformer(BaseFeatureTransformer):
         self.batch_size = batch_size
         self.workers = workers
         self.image_size = image_size
-        
+
         self.model_name = classifier_url.split('/')[-3]
         self.model = tf.keras.Sequential([
             hub.KerasLayer(classifier_url, input_shape=(image_size, image_size, 3,)),
@@ -265,7 +266,7 @@ class TFPretrainedImageFeaturesTransformer(BaseFeatureTransformer):
     def transform(self, dataframe):
         dataloader = torch.utils.data.DataLoader(
             ImageDatasetFromPath(
-                self.path_list, 
+                self.path_list,
                 return_numpy=True,
                 preprocessors=[resize_to_square, partial(center_crop, size=self.image_size), normalize],
                 transforms=None,
@@ -273,18 +274,18 @@ class TFPretrainedImageFeaturesTransformer(BaseFeatureTransformer):
             ),
             batch_size=self.image_size,
             shuffle=False,
-            num_workers=self.workers, 
+            num_workers=self.workers,
             collate_fn=collate_fn_numpy,
             pin_memory=False
         )
-        
+
         features = []
         for i, (input, _) in enumerate(dataloader):
             preds = self.model.predict(input)
             features.append(preds)
         features = np.concatenate(features)
         features = pd.DataFrame(
-            features, 
+            features,
             columns=[f'{self.model_name}_{i:03}' for i in range(features.shape[1])]
         )
         self.features = [features]

@@ -1,14 +1,14 @@
-from contextlib import contextmanager
 import json
-from logging import getLogger, Formatter, StreamHandler, FileHandler, INFO
-from multiprocessing import Pool
 import os
-import requests
 import time
+from contextlib import contextmanager
+from logging import INFO, FileHandler, Formatter, StreamHandler, getLogger
+from multiprocessing import Pool
 
-from IPython.display import display, Javascript
 import numpy as np
 import pandas as pd
+import requests
+from IPython.display import Javascript, display
 from sklearn.preprocessing import LabelEncoder
 from sklearn.utils.validation import check_is_fitted, column_or_1d
 
@@ -21,7 +21,7 @@ def init_logger(file='log.txt'):
     dirs = '/'.join(file.split('/')[:-1])
     if not os.path.exists(dirs):
         os.makedirs(dirs)
-    
+
     LOGFORMAT = '%(asctime)s %(levelname)s %(message)s'
     logger = getLogger()
     fh_handler = FileHandler(file)
@@ -42,7 +42,7 @@ def timer(name, logger=None):
 
 
 def parallelize_dataframe(df, func, n_workers=4):
-    df_split = np.array_split(df, n_workers)        
+    df_split = np.array_split(df, n_workers)
     pool = Pool(n_workers)
     df = pd.concat(pool.map(func, df_split))
     pool.close()
@@ -53,8 +53,8 @@ def parallelize_dataframe(df, func, n_workers=4):
 def check_path(path):
     if os.path.exists(path):
         raise ValueError('{} already exists.'.format(path))
-      
-    
+
+
 def save_notebook(current_ipynb_path, save_ipynb_path):
     print('Saving notebook...')
     display(Javascript('IPython.notebook.save_notebook()'), include=['application/javascript'])
@@ -62,7 +62,7 @@ def save_notebook(current_ipynb_path, save_ipynb_path):
     command = 'jupyter nbconvert --to notebook {} --output {}'.format(current_ipynb_path, save_ipynb_path)
     print('executing {}...'.format(command))
     os.system(command)
-    print('Done.')   
+    print('Done.')
 
 
 def submit(competition_name, file_path, comment='from API'):
@@ -71,12 +71,13 @@ def submit(competition_name, file_path, comment='from API'):
     tmp = os.popen(f'kaggle competitions submissions -c {COMPETITION_NAME} -v | head -n 2').read()
     col, values = tmp.strip().split('\n')
     message = 'SCORE!!!\n'
-    for i,j in zip(col.split(','), values.split(',')):
+    for i, j in zip(col.split(','), values.split(',')):
         message += f'{i}: {j}\n'
 
 
 class LINENotifyBot():
     API_URL = 'https://notify-api.line.me/api/notify'
+
     def __init__(self, access_token):
         self.__headers = {'Authorization': 'Bearer ' + access_token}
 
@@ -87,7 +88,7 @@ class LINENotifyBot():
             'stickerId': sticker_id,
         }
         files = {}
-        if image != None:
+        if image is not None:
             files = {'imageFile': open(image, 'rb')}
         r = requests.post(
             LINENotifyBot.API_URL,
@@ -100,11 +101,10 @@ class LINENotifyBot():
 class SpreadSheetBot():
     def __init__(self, endpoint):
         self.endpoint = endpoint
-        
+
     def send(self, *args):
         requests.post(self.endpoint, json.dumps(args))
-    
-    
+
 
 def change_dtype(dataframe, columns=None):
     if columns is None:
@@ -148,7 +148,7 @@ class TolerantLabelEncoder(LabelEncoder):
     def __init__(self, ignore_unknown=True):
         """Tolerant label encoder which allows unseen labels"""
         self.ignore_unknown = ignore_unknown
-        
+
     def fit(self, X, y=None):
         _, uniques = pd.factorize(X)
         self.classes_ = uniques
@@ -164,17 +164,17 @@ class TolerantLabelEncoder(LabelEncoder):
             X = pd.Series(X.values)
 
         indices = X.isin(self.classes_)
-        nan_indices = X.isnull()        
+        nan_indices = X.isnull()
 
         if not self.ignore_unknown and not np.all(indices):
-            raise ValueError('X contains new labels: %s' 
-                                         % str(np.setdiff1d(X, self.classes_)))
+            raise ValueError('X contains new labels: %s'
+                             % str(np.setdiff1d(X, self.classes_)))
 
         X_transformed = X.map(self.classes_map_)
         X_transformed[~indices] = len(self.classes_)
         X_transformed[nan_indices] = -1
         return X_transformed.values
-    
+
     def fit_transform(self, X, y=None):
         codes, uniques = pd.factorize(X)
         self.classes_ = uniques
@@ -186,12 +186,12 @@ class TolerantLabelEncoder(LabelEncoder):
         labels = np.arange(len(self.classes_))
         indices = np.isin(X, labels)
         if not self.ignore_unknown and not np.all(indices):
-            raise ValueError('X contains new labels: %s' 
-                                         % str(np.setdiff1d(X, self.classes_)))
+            raise ValueError('X contains new labels: %s'
+                             % str(np.setdiff1d(X, self.classes_)))
 
         X_transformed = np.asarray(self.classes_[X], dtype=object)
         X_transformed[~indices] = '_unknown'
-        X_transformed[X==-1] = np.nan
+        X_transformed[X == -1] = np.nan
         return X_transformed
 
 
@@ -208,7 +208,7 @@ class TolerantLabelEncoderOnMultipleCategories(LabelEncoder):
         Parameters
         ----------
         X : pd.DataFrame
-        """        
+        """
         for f in self.categorical_features:
             self.encoders[f].fit(X[f])
         return self
@@ -218,7 +218,7 @@ class TolerantLabelEncoderOnMultipleCategories(LabelEncoder):
         Parameters
         ----------
         X : pd.DataFrame
-        """        
+        """
         for f in self.categorical_features:
             X[f] = self.encoders[f].fit_transform(X[f])
         return X
@@ -228,7 +228,7 @@ class TolerantLabelEncoderOnMultipleCategories(LabelEncoder):
         Parameters
         ----------
         X : pd.DataFrame
-        """        
+        """
         for f in self.categorical_features:
             X[f] = self.encoders[f].transform(X[f])
         return X
@@ -238,7 +238,7 @@ class TolerantLabelEncoderOnMultipleCategories(LabelEncoder):
         Parameters
         ----------
         X : pd.DataFrame
-        """      
+        """
         for f in self.categorical_features:
             X[f] = self.encoders[f].inverse_transform(X[f])
-        return X   
+        return X

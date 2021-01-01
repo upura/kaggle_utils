@@ -1,18 +1,20 @@
-import itertools
 import gc
-from tensorflow.keras.preprocessing.text import text_to_word_sequence
+import itertools
+
 import numpy as np
 import pandas as pd
 from gensim.models import Word2Vec
-from sklearn.decomposition import LatentDirichletAllocation, NMF
+from sklearn.decomposition import NMF, LatentDirichletAllocation
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.metrics import normalized_mutual_info_score
+from tensorflow.keras.preprocessing.text import text_to_word_sequence
+
 from .base import BaseFeatureTransformer
 
 
 class CategoryVectorizer(BaseFeatureTransformer):
-    def __init__(self, categorical_columns, n_components, 
-                 vectorizer=CountVectorizer(), 
+    def __init__(self, categorical_columns, n_components,
+                 vectorizer=CountVectorizer(),
                  transformer=LatentDirichletAllocation(),
                  threshold=None,
                  name='CountLDA'):
@@ -26,7 +28,7 @@ class CategoryVectorizer(BaseFeatureTransformer):
     def transform(self, dataframe):
         self.features = []
         for (col1, col2) in self.get_column_pairs():
-            if (self.threshold is not None) and (normalized_mutual_info_score(dataframe[c1], dataframe[c2], average_method='arithmetic') > self.threshold):
+            if (self.threshold is not None) and (normalized_mutual_info_score(dataframe[col1], dataframe[col2], average_method='arithmetic') > self.threshold):
                 try:
                     sentence = self.create_word_list(dataframe, col1, col2)
                     sentence = self.vectorizer.fit_transform(sentence)
@@ -35,36 +37,35 @@ class CategoryVectorizer(BaseFeatureTransformer):
                     self.features.append(feature)
                 except:
                     print(f'passing {col1} and {col2}')
-        dataframe = pd.concat([dataframe]+self.features, axis=1)
+        dataframe = pd.concat([dataframe] + self.features, axis=1)
         return dataframe
 
     def create_word_list(self, dataframe, col1, col2):
         col1_size = int(dataframe[col1].values.max() + 1)
         col2_list = [[] for _ in range(col1_size)]
         for val1, val2 in zip(dataframe[col1].values, dataframe[col2].values):
-            col2_list[int(val1)].append(col2+str(val2))
+            col2_list[int(val1)].append(col2 + str(val2))
         return [' '.join(map(str, ls)) for ls in col2_list]
-    
+
     def get_feature(self, dataframe, col1, col2, latent_vector, name=''):
         features = np.zeros(
             shape=(len(dataframe), self.n_components), dtype=np.float32)
-        self.columns = ['_'.join([name, col1, col2, str(i)])
-                   for i in range(self.n_components)]
+        self.columns = ['_'.join([name, col1, col2, str(i)]) for i in range(self.n_components)]
         for i, val1 in enumerate(dataframe[col1]):
             features[i, :self.n_components] = latent_vector[val1]
 
         return pd.DataFrame(data=features, columns=self.columns)
-    
+
     def get_column_pairs(self):
         return [(col1, col2) for col1, col2 in itertools.product(self.categorical_columns, repeat=2) if col1 != col2]
 
     def get_numerical_features(self):
         return self.columns
-    
+
 
 class CategoryNMFVectorizer(CategoryVectorizer):
-    def __init__(self, categorical_columns, n_components, 
-                 vectorizer=CountVectorizer(), 
+    def __init__(self, categorical_columns, n_components,
+                 vectorizer=CountVectorizer(),
                  transformer=LatentDirichletAllocation(),
                  threshold=None,
                  name='CountNMF'):
@@ -78,7 +79,7 @@ class CategoryNMFVectorizer(CategoryVectorizer):
     def transform(self, dataframe):
         self.features = []
         for (col1, col2) in self.get_column_pairs():
-            if (self.threshold is not None) and (normalized_mutual_info_score(dataframe[c1], dataframe[c2], average_method='arithmetic') > self.threshold):
+            if (self.threshold is not None) and (normalized_mutual_info_score(dataframe[col1], dataframe[col2], average_method='arithmetic') > self.threshold):
                 try:
                     sentence = self.create_word_list(dataframe, col1, col2)
                     sentence = self.vectorizer.fit_transform(sentence)
@@ -88,14 +89,12 @@ class CategoryNMFVectorizer(CategoryVectorizer):
                     self.features.append(feature)
                 except:
                     print(f'passing {col1} and {col2}')
-        dataframe = pd.concat([dataframe]+self.features, axis=1)
+        dataframe = pd.concat([dataframe] + self.features, axis=1)
         return dataframe
-    
+
     def get_feature(self, dataframe, col1, col2, latent_vector1, latent_vector2, name=''):
-        features = np.zeros(
-            shape=(len(dataframe), self.n_components*2), dtype=np.float32)
-        self.columns = ['_'.join([name, col1, col2, str(i)])
-                   for i in range(self.n_components*2)]
+        features = np.zeros(shape=(len(dataframe), self.n_components * 2), dtype=np.float32)
+        self.columns = ['_'.join([name, col1, col2, str(i)]) for i in range(self.n_components * 2)]
         for i, val1 in enumerate(dataframe[col1]):
             features[i, :self.n_components] = latent_vector1[val1]
         for i, val2 in enumerate(dataframe[col2]):
@@ -108,8 +107,9 @@ class CategoryUser2Vec(BaseFeatureTransformer):
     '''
         Encodes sequence of bag of category (including target) per a "user".
     '''
-    def __init__(self, categorical_columns, key, n_components, 
-                 vectorizer=CountVectorizer(), 
+
+    def __init__(self, categorical_columns, key, n_components,
+                 vectorizer=CountVectorizer(),
                  transformer=LatentDirichletAllocation(),
                  name='CountLDA'):
         self.categorical_columns = categorical_columns
@@ -125,32 +125,31 @@ class CategoryUser2Vec(BaseFeatureTransformer):
         df[self.categorical_columns].fillna(-1, inplace=True)
         df['__user_id'] = ''
         for c in self.key:
-            df['__user_id']  += c + df[c].astype(str) + ' '
+            df['__user_id'] += c + df[c].astype(str) + ' '
         df['__user_document'] = ''
         for c in self.categorical_columns:
             df['__user_document'] += c + df[c].astype(str) + ' '
         df = df[['__user_id', '__user_document']]
         gc.collect()
-        
+
         # vectorize
         documents, user_ids = self.create_documents(df)
         documents = self.vectorizer.fit_transform(documents)
         feature = self.transformer.fit_transform(documents)
         feature = self.get_feature(df, feature, name=self.name)
         feature['__user_id'] = user_ids
-        
+
         # merge
         df = df.merge(feature, on='__user_id', how='left').reset_index(drop=True)[self.columns]
         self.features = [df]
         dataframe = pd.concat([dataframe, df], axis=1)
-        
+
         return dataframe
-   
+
     def get_feature(self, dataframe, latent_vector, name=''):
-        self.columns = ['_'.join([name, 'category_user2vec', str(i)])
-                   for i in range(self.n_components)]
+        self.columns = ['_'.join([name, 'category_user2vec', str(i)]) for i in range(self.n_components)]
         return pd.DataFrame(latent_vector, columns=self.columns)
-    
+
     def create_documents(self, dataframe):
         g = dataframe.groupby(['__user_id'])
         documents = g['__user_document'].apply(lambda x: ', '.join(x))
@@ -165,8 +164,9 @@ class CategoryUser2VecWithW2V(CategoryUser2Vec):
     '''
         Encodes sequence of bag of category (including target) per a "user".
     '''
-    def __init__(self, categorical_columns, key, n_components, 
-                 w2v_params={'window': 3, 'min_count': 1, 'workers': 4}, 
+
+    def __init__(self, categorical_columns, key, n_components,
+                 w2v_params={'window': 3, 'min_count': 1, 'workers': 4},
                  name='W2V'):
         if len(categorical_columns) > 1:
             raise ValueError('Number of encoding features should be 1.')
@@ -183,45 +183,45 @@ class CategoryUser2VecWithW2V(CategoryUser2Vec):
         df[self.categorical_columns].fillna(-1, inplace=True)
         df['__user_id'] = ''
         for c in self.key:
-            df['__user_id']  += c + df[c].astype(str) + ' '
+            df['__user_id'] += c + df[c].astype(str) + ' '
         df['__user_document'] = ''
         for c in self.categorical_columns:
             df['__user_document'] += df[c].astype(str)
         df = df[['__user_id', '__user_document']]
         gc.collect()
-        
+
         # vectorize
         documents, user_ids = self.create_documents(df)
         w2v = Word2Vec(documents, **self.w2v_params)
-        vocab_keys = list(w2v.wv.vocab.keys())      
+        vocab_keys = list(w2v.wv.vocab.keys())
         w2v_array = np.zeros((len(vocab_keys), self.n_components))
         for i, v in enumerate(vocab_keys):
             w2v_array[i, :] = w2v.wv[v]
         vocab_vectors = pd.DataFrame(w2v_array.T, columns=vocab_keys)
-        
+
         # vocab_keys -> aggregate by key
         self.columns = ['_'.join([self.name, 'category_user2vec', g, str(i)]) for g in ['mean', 'median', 'min', 'max'] for i in range(self.n_components)]
         features = self.aggregate_documents(documents, vocab_vectors)
 
         # merge
-        df = df.merge(feature, on='__user_id', how='left').reset_index(drop=True)[self.columns]
+        df = df.merge(features, on='__user_id', how='left').reset_index(drop=True)[self.columns]
         self.features = [df]
         dataframe = pd.concat([dataframe, df], axis=1)
-        
+
         return dataframe
-   
+
     def aggregate_documents(self, documents, vocab_vectors):
         w = documents.apply(lambda sentence: self._aggregate_documents([vocab_vectors.loc[:, w] for w in sentence]))
         return w
-        
+
     def _aggregate_documents(self, vecs):
         return pd.Series(np.concatenate([
-            np.mean(vecs, axis=0), 
-            np.median(vecs, axis=0), 
-            np.min(vecs, axis=0), 
-            np.max(vecs, axis=0), 
+            np.mean(vecs, axis=0),
+            np.median(vecs, axis=0),
+            np.min(vecs, axis=0),
+            np.max(vecs, axis=0),
         ]), index=self.columns)
-    
+
     def create_documents(self, dataframe):
         g = dataframe.groupby(['__user_id'])
         documents = g['__user_document'].agg(list)
@@ -237,8 +237,9 @@ class Category2VecWithW2V(BaseFeatureTransformer):
         Encodes combination of categories to sequence.
         This is similar to CategoryVectorizer, but Category2VecWithW2V can consider combinations of many categories.
     '''
-    def __init__(self, categorical_columns, 
-                 n_components=10, min_count=1, workers=4, seed=777, 
+
+    def __init__(self, categorical_columns,
+                 n_components=10, min_count=1, workers=4, seed=777,
                  save_model_path=None, name='category2vec'):
         self.categorical_columns = categorical_columns
         self.n_components = n_components
@@ -256,11 +257,11 @@ class Category2VecWithW2V(BaseFeatureTransformer):
 
         documents = self.create_documents(dataframe)
         model = Word2Vec(
-            documents, 
+            documents,
             size=self.n_components,
-            window=self.window, 
-            min_count=self.min_count, 
-            workers=self.workers, 
+            window=self.window,
+            min_count=self.min_count,
+            workers=self.workers,
             seed=self.seed
         )
         if self.save_model_path is not None:
@@ -268,7 +269,6 @@ class Category2VecWithW2V(BaseFeatureTransformer):
 
         result = []
         for text in documents:
-            n_skip = 0
             vecs = []
             for n_w, word in enumerate(text):
                 try:
@@ -288,7 +288,7 @@ class Category2VecWithW2V(BaseFeatureTransformer):
         feature = pd.DataFrame(np.concatenate([mean_, min_, max_], axis=1), columns=self.columns)
         self.features = [feature]
         dataframe = pd.concat([dataframe, feature], axis=1)
-        
+
         return dataframe
 
     def create_documents(self, dataframe):

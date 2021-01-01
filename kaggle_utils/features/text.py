@@ -1,13 +1,16 @@
 import os
 
-from gensim.models.doc2vec import Doc2Vec, TaggedDocument
 import nltk
 import numpy as np
 import pandas as pd
+import scipy as sp
+import tensorflow_hub as hub
+from gensim.models.doc2vec import Doc2Vec, TaggedDocument
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.decomposition import TruncatedSVD
-from sklearn.feature_extraction.text import CountVectorizer
-import tensorflow_hub as hub
+from sklearn.feature_extraction.text import (CountVectorizer,
+                                             _document_frequency)
+from sklearn.utils.validation import check_is_fitted
 from tensorflow.keras.preprocessing.text import text_to_word_sequence
 from transformers import pipeline
 
@@ -17,21 +20,21 @@ from .base import BaseFeatureTransformer
 class BasicTextFeatureTransformer(BaseFeatureTransformer):
     def __init__(self, text_columns):
         self.text_columns = text_columns
-    
+
     def _get_features(self, dataframe, column):
-        dataframe[column+'_num_chars'] = dataframe[column].apply(len)
-        dataframe[column+'_num_capitals'] = dataframe[column].apply(lambda x: sum(1 for c in x if c.isupper()))
-        dataframe[column+'_caps_vs_length'] = dataframe[column+'_num_chars'] / dataframe[column+'_num_capitals']
-        dataframe[column+'_num_exclamation_marks'] = dataframe[column].apply(lambda x: x.count('!'))
-        dataframe[column+'_num_question_marks'] = dataframe[column].apply(lambda x: x.count('?'))
-        dataframe[column+'_num_punctuation'] = dataframe[column].apply(lambda x: sum(x.count(w) for w in '.,;:'))
-        dataframe[column+'_num_symbols'] = dataframe[column].apply(lambda x: sum(x.count(w) for w in '*&$%'))
-        dataframe[column+'_num_words'] = dataframe[column].apply(lambda x: len(x.split()))
-        dataframe[column+'_num_unique_words'] = dataframe[column].apply(lambda x: len(set(w for w in x.split())))
-        dataframe[column+'_words_vs_unique'] = dataframe[column+'_num_unique_words'] / dataframe[column+'_num_words']
-        dataframe[column+'_num_smilies'] = dataframe[column].apply(lambda x: sum(x.count(w) for w in (':-)', ':)', ';-)', ';)')))
+        dataframe[column + '_num_chars'] = dataframe[column].apply(len)
+        dataframe[column + '_num_capitals'] = dataframe[column].apply(lambda x: sum(1 for c in x if c.isupper()))
+        dataframe[column + '_caps_vs_length'] = dataframe[column + '_num_chars'] / dataframe[column + '_num_capitals']
+        dataframe[column + '_num_exclamation_marks'] = dataframe[column].apply(lambda x: x.count('!'))
+        dataframe[column + '_num_question_marks'] = dataframe[column].apply(lambda x: x.count('?'))
+        dataframe[column + '_num_punctuation'] = dataframe[column].apply(lambda x: sum(x.count(w) for w in '.,;:'))
+        dataframe[column + '_num_symbols'] = dataframe[column].apply(lambda x: sum(x.count(w) for w in '*&$%'))
+        dataframe[column + '_num_words'] = dataframe[column].apply(lambda x: len(x.split()))
+        dataframe[column + '_num_unique_words'] = dataframe[column].apply(lambda x: len(set(w for w in x.split())))
+        dataframe[column + '_words_vs_unique'] = dataframe[column + '_num_unique_words'] / dataframe[column + '_num_words']
+        dataframe[column + '_num_smilies'] = dataframe[column].apply(lambda x: sum(x.count(w) for w in (':-)', ':)', ';-)', ';)')))
         return dataframe
-    
+
     def transform(self, dataframe):
         dataframe[self.text_columns] = dataframe[self.text_columns].astype(str).fillna('missing')
         for c in self.text_columns:
@@ -39,12 +42,12 @@ class BasicTextFeatureTransformer(BaseFeatureTransformer):
         return dataframe
 
 
-class TextVectorizer(BaseFeatureTransformer): 
+class TextVectorizer(BaseFeatureTransformer):
     '''
     from sklearn.decomposition import TruncatedSVD, NMF
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.pipeline import make_pipeline, make_union
-    
+
     vectorizer = make_pipeline(
         TfidfVectorizer(),
         make_union(
@@ -58,8 +61,9 @@ class TextVectorizer(BaseFeatureTransformer):
         ),
     )
     '''
+
     def __init__(self, text_columns,
-                 vectorizer=CountVectorizer(), 
+                 vectorizer=CountVectorizer(),
                  transformer=TruncatedSVD(n_components=128),
                  name='count_svd'):
         self.text_columns = text_columns
@@ -67,7 +71,7 @@ class TextVectorizer(BaseFeatureTransformer):
         self.vectorizer = vectorizer
         self.transformer = transformer
         self.name = name + str(self.n_components)
-    
+
     def transform(self, dataframe):
         dataframe[self.text_columns] = dataframe[self.text_columns].astype(str).fillna('missing')
         features = []
@@ -76,15 +80,15 @@ class TextVectorizer(BaseFeatureTransformer):
             feature = self.transformer.fit_transform(sentence)
             feature = pd.DataFrame(feature, columns=[self.name + f'_{i:03}' for i in range(self.n_components)])
             features.append(feature)
-        dataframe = pd.concat([dataframe]+features, axis=1)
+        dataframe = pd.concat([dataframe] + features, axis=1)
         return dataframe
-    
-    
+
+
 class Doc2VecFeatureTransformer(BaseFeatureTransformer):
     def __init__(self, text_columns, name='doc2vec'):
         self.text_columns = text_columns
         self.name = name
-    
+
     def transform(self, dataframe):
         self.features = []
         for c in self.text_columns:
@@ -98,26 +102,26 @@ class Doc2VecFeatureTransformer(BaseFeatureTransformer):
                 f'{self.name}_sum': np.sum(result, axis=1),
                 f'{self.name}_max': np.max(result, axis=1),
                 f'{self.name}_min': np.min(result, axis=1),
-                f'{self.name}_var': np.var(result, axis=1), 
+                f'{self.name}_var': np.var(result, axis=1),
             })
             self.features.append(features)
-        dataframe = pd.concat([dataframe]+self.features, axis=1)
+        dataframe = pd.concat([dataframe] + self.features, axis=1)
         return dataframe
 
-    
+
 class EmojiFeatureTransformer(BaseFeatureTransformer):
     def __init__(self, text_columns):
         self.text_columns = text_columns
 
     def transform(self, dataframe):
         dataframe[self.text_columns] = dataframe[self.text_columns].astype(str).fillna('missing')
-        
+
         module_path = os.path.dirname(__file__)
         emoji1 = pd.read_csv(os.path.join(module_path, 'external_data', 'Emoji_Sentiment_Data_v1.0.csv'))
         emoji2 = pd.read_csv(os.path.join(module_path, 'external_data', 'Emojitracker_20150604.csv'))
         emoji = emoji1.merge(emoji2, how='left', on='Emoji', suffixes=('', '_tracker'))
         emoji_list = emoji['Emoji'].values
-        
+
         features = []
         for column in self.text_columns:
             emoji_count = {}
@@ -132,31 +136,31 @@ class EmojiFeatureTransformer(BaseFeatureTransformer):
             for c in emoji_columns:
                 v = emoji_count * emoji[c].values.T
                 for stat in stats:
-                    feature[column+'_'+stat.__name__+'_'+c] = stat(v, axis=1)
+                    feature[column + '_' + stat.__name__ + '_' + c] = stat(v, axis=1)
             feature = pd.DataFrame(feature)
             features.append(feature)
 
-        dataframe = pd.concat([dataframe]+features, axis=1)
-    
+        dataframe = pd.concat([dataframe] + features, axis=1)
+
         return dataframe
 
-    
+
 class W2VFeatureTransformer(BaseFeatureTransformer):
     '''
     from gensim.models import FastText, word2vec, KeyedVectors
-    
+
     model = word2vec.Word2Vec.load('../data/w2v.model')
     # model = KeyedVectors.load_word2vec_format(path, binary=True)
     '''
     ps = nltk.stem.PorterStemmer()
     lc = nltk.stem.lancaster.LancasterStemmer()
     sb = nltk.stem.snowball.SnowballStemmer('english')
-    
+
     def __init__(self, text_columns, model, name='w2v'):
         self.text_columns = text_columns
         self.model = model
         self.name = name
-        
+
     def transform(self, dataframe):
         self.features = []
         for c in self.text_columns:
@@ -196,11 +200,11 @@ class W2VFeatureTransformer(BaseFeatureTransformer):
                 vec = vec / (n_w - n_skip + 1)
                 result.append(vec)
             result = pd.DataFrame(
-                result, 
+                result,
                 columns=[f'{c}_{self.name}_{i:03}' for i in range(self.model.vector_size)]
             )
             self.features.append(result)
-        dataframe = pd.concat([dataframe]+self.features, axis=1)
+        dataframe = pd.concat([dataframe] + self.features, axis=1)
         return dataframe
 
 
@@ -212,37 +216,39 @@ class USEFeatureTransformer(BaseFeatureTransformer):
         'https://tfhub.dev/google/universal-sentence-encoder/4',
     ]
     '''
+
     def __init__(self, text_columns, urls, name='use'):
         self.text_columns = text_columns
         self.urls = urls
         self.name = name
-        
+
     def transform(self, dataframe):
         self.features = []
-        for url in self.urls: 
+        for url in self.urls:
             model_name = url.split('/')[-2]
             embed = hub.load(url)
             for c in self.text_columns:
                 texts = dataframe[c].astype(str)
                 result = embed(texts).numpy()
                 result = pd.DataFrame(
-                    result, 
+                    result,
                     columns=[f'{self.name}_{model_name}_{i:03}' for i in range(result.shape[1])]
                 )
                 self.features.append(result)
-        dataframe = pd.concat([dataframe]+self.features, axis=1)
+        dataframe = pd.concat([dataframe] + self.features, axis=1)
         return dataframe
 
-    
+
 class BERTFeatureTransformer(BaseFeatureTransformer):
     '''
     Reference
     ---------
     https://huggingface.co/transformers/pretrained_models.html
-    
+
     Example
     -------
     '''
+
     def __init__(self, text_columns, model_names, batch_size=8, device=-1):
         self.text_columns = text_columns
         self.model_names = model_names
@@ -251,24 +257,24 @@ class BERTFeatureTransformer(BaseFeatureTransformer):
 
     def transform(self, dataframe):
         self.features = []
-        for model_name in self.model_names: 
-            model = pipeline('feature-extraction', device=self.device, model=model_name)            
+        for model_name in self.model_names:
+            model = pipeline('feature-extraction', device=self.device, model=model_name)
             for c in self.text_columns:
                 texts = dataframe[c].astype(str).tolist()
                 result = []
-                for i in range(np.ceil(len(texts)/self.batch_size).astype(int)):
+                for i in range(np.ceil(len(texts) / self.batch_size).astype(int)):
                     result.append(
                         np.max(model(
-                            texts[i*self.batch_size:min(len(texts), (i+1)*self.batch_size)]
+                            texts[i * self.batch_size:min(len(texts), (i + 1) * self.batch_size)]
                         ), axis=1)
                     )
                 result = np.concatenate(result, axis=0)
                 result = pd.DataFrame(
-                    result, 
+                    result,
                     columns=[f'{model_name}_{i:03}' for i in range(result.shape[1])]
                 )
                 self.features.append(result)
-        dataframe = pd.concat([dataframe]+self.features, axis=1)
+        dataframe = pd.concat([dataframe] + self.features, axis=1)
         return dataframe
 
 
@@ -285,6 +291,7 @@ class BM25Transformer(BaseEstimator, TransformerMixin):
     Okapi BM25: a non-binary model - Introduction to Information Retrieval
     http://nlp.stanford.edu/IR-book/html/htmledition/okapi-bm25-a-non-binary-model-1.html
     '''
+
     def __init__(self, use_idf=True, k1=2.0, b=0.75):
         self.use_idf = use_idf
         self.k1 = k1

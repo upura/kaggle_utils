@@ -1,9 +1,9 @@
 class DownSampler(object):
-    def __init__(self, random_states):
-        self.random_states = random_states
+    def __init__(self, random_state):
+        self.random_state = random_state
 
     @staticmethod
-    def transform(data, target):
+    def transform(self, data, target):
         positive_data = data[data[target] == 1]
         positive_ratio = len(positive_data) / len(data)
         negative_data = data[data[target] == 0].sample(

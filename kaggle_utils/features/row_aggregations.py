@@ -1,23 +1,24 @@
 import gc
-from joblib import Parallel, delayed
 
 import numpy as np
 import pandas as pd
-from scipy.stats import skew, kurtosis
+from joblib import Parallel, delayed
+from scipy.stats import kurtosis, skew
 from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.utils.validation import check_is_fitted, column_or_1d, _num_samples
+from sklearn.utils.validation import (_num_samples, check_is_fitted,
+                                      column_or_1d)
 
-    
+
 class RowAggregationTransformer(BaseEstimator, TransformerMixin):
     def __init__(self, verbose=0, n_jobs=-1, pre_dispatch='2*n_jobs', **kwargs):
         super().__init__()
         self.verbose = verbose
         self.n_jobs = n_jobs
         self.pre_dispatch = pre_dispatch
-        
+
     def _aggregate_row(self, row):
         non_zero_values = row[row.nonzero()]
-        if len(non_zero_values)==0:
+        if len(non_zero_values) == 0:
             aggregations = {'non_zero_mean': np.nan,
                             'non_zero_std': np.nan,
                             'non_zero_max': np.nan,
@@ -65,9 +66,9 @@ class RowAggregationTransformer(BaseEstimator, TransformerMixin):
                             'non_zero_count': len(non_zero_values),
                             'non_zero_fraction': len(non_zero_values) / len(row)
                             }
-    
+
         return np.array([*aggregations.values()])
-        
+
     def fit(self, X, y=None):
         return self
 
